@@ -31,9 +31,13 @@ dependencies:
     sdk: flutter
 
 
+  air_brother: ^0.1.4
   #another_quickbase: ^0.0.4
-  another_quickbooks: ^0.0.2
+  #another_quickbooks: ^0.0.3
+  another_quickbooks:
+    path: "../another_quickbooks"
 
+  webview_flutter: ^3.0.0
   google_mlkit_text_recognition: ^0.2.0
   infinite_scroll_pagination: ^3.1.0
   google_fonts: ^2.3.1
@@ -71,9 +75,9 @@ flutter:
   uses-material-design: true
 
   # To add assets to your application, add an assets section, like this:
-  # assets:
-  #   - images/a_dot_burr.jpeg
-  #   - images/a_dot_ham.jpeg
+  assets:
+     - assets/images/handyman.png
+     - assets/lottie/servishero_loading.json
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/assets-and-images/#resolution-aware.
