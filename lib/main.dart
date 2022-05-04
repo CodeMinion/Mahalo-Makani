@@ -294,7 +294,8 @@ class _MyHomePageState extends State<MyHomePage>
   }
 
   Future<void> chargeClient() async {
-    // TODO Look for scanners.
+
+    // Look for scanners.
     _progressModel.setData(
         status: ProgressStatus.loading,
         message: "Looking for network scanners...");
@@ -347,11 +348,10 @@ class _MyHomePageState extends State<MyHomePage>
     }
 
     // Extract license number
-    String driverLicense = getNumber(line: text)!; //parts[2];
-    // Extract first name
-    String firstName = recognizedText.blocks[2].text; //parts[3];
+    String driverLicense = getNumber(line: text)!;
+    String firstName = recognizedText.blocks[2].text;
     // Extract last name
-    String lastName = recognizedText.blocks[3].text; //parts[4];
+    String lastName = recognizedText.blocks[3].text;
 
     _progressModel.setData(
         status: ProgressStatus.loading,
@@ -359,6 +359,8 @@ class _MyHomePageState extends State<MyHomePage>
 
     // Get QuickBooks customer using license number.
     qbModels.Customer? customer = await _getCustomerByDriverLicense(driverLicenseNumber: driverLicense, client: quickClient!);
+    print("Found Customer: $customer");
+    print ("Sync Token ${customer?.syncToken}");
     // If customer does not exist, create it on QuickBooks.
     customer ??= await _createCustomer(driverLicenseNumber: driverLicense, firstName: firstName, lastName: lastName, client: quickClient!);
     // Prompt user with invoice receipt and request email address if not present in customer.
@@ -374,6 +376,7 @@ class _MyHomePageState extends State<MyHomePage>
     // On return if customer email is different from provided on update customer.
     if (email != customer.primaryEmailAddr?.address) {
       try {
+        print ("Sync Token ${customer.syncToken}");
         await _updateCustomer(customer: customer.copyWith(
             primaryEmailAddr: qbModels.EmailAddress(address: email)),
             client: quickClient!);
@@ -381,6 +384,7 @@ class _MyHomePageState extends State<MyHomePage>
       catch (e) {
         _progressModel.setData(status: ProgressStatus.none);
         _showSnackBar(message: "Unable to update customer. Try again");
+        throw e;
 
       }
     }
@@ -425,11 +429,11 @@ class _MyHomePageState extends State<MyHomePage>
             TextFormField(
               initialValue: "${_activeCustomer?.primaryEmailAddr?.address}",
               textInputAction: TextInputAction.next,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: "Email:"),
+              keyboardType: TextInputType.emailAddress,
+              decoration: const InputDecoration(labelText: "Customer Email:"),
               // The validator receives the text that the user has entered.
               validator: (value) {
-                if (isEmail(value)) {
+                if (!isEmail(value)) {
                   return "Enter a valid email";
                 }
 
@@ -447,7 +451,7 @@ class _MyHomePageState extends State<MyHomePage>
                 onPressed: () {
                   // Validate returns true if the form is valid, or false otherwise.
                   if (_formKey.currentState!.validate()) {
-                    Navigator.pop(context, _activeCustomer);
+                    Navigator.pop(context, _activeCustomer!.primaryEmailAddr!.address);
                   }
                 },
                 child: const Text("Send Invoice"),
@@ -508,12 +512,39 @@ class _MyHomePageState extends State<MyHomePage>
                             },
                             itemCount: _selectedServices.length,
                             itemBuilder: (context, index) {
-                              return Column(
-                                children: [
-                                  Text(_selectedServices[index].name ??
-                                      "No-Item"),
-                                ],
-                              );
+                              qbModels.Item service = _selectedServices[index];
+                              return  AspectRatio(
+                                aspectRatio: kLabelWidth / kLabelHeight,
+                                child: Card(
+                                  clipBehavior: Clip.antiAliasWithSaveLayer,
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(8.0),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.center,
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            service.name ?? "No Name",
+                                            style: kLabelTextStyle.copyWith(fontSize: 18),
+                                            textAlign: TextAlign.center,
+                                          ),
+
+                                        ),
+                                        Expanded(
+                                          child: Text(
+                                            service.description ?? "No Name",
+                                            style: kLabelTextStyle.copyWith(fontSize: 14),
+                                            textAlign: TextAlign.center,
+                                          ),
+
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              );//ServiceCardView(service: _selectedServices[index]);
                             }),
                       ),
                     ),
@@ -524,7 +555,7 @@ class _MyHomePageState extends State<MyHomePage>
                             fontWeight: FontWeight.bold, fontSize: 20),
                         children: <TextSpan>[
                           TextSpan(
-                              text: '${_selectedServices.isEmpty ? 0.0 : _selectedServices.reduce((value, element) => value.copyWith(unitPrice: value.unitPrice??0 + (element.unitPrice?? 0))).unitPrice}',
+                              text: '${_selectedServices.isEmpty ? 0.0 : _selectedServices.reduce((value, element) => element.copyWith(unitPrice: value.unitPrice! + element.unitPrice!)).unitPrice}',
                               style: kLabelTextStyle.copyWith(
                                   fontWeight: FontWeight.normal))
                         ],
@@ -694,7 +725,7 @@ class ServiceCardView extends StatelessWidget {
         builder: (context, color, child) {
           return ColorFiltered(
             child: child,
-            colorFilter: ColorFilter.mode(color!, BlendMode.modulate),
+            colorFilter: ColorFilter.mode(color?? Colors.white, BlendMode.modulate),
           );
         },
         child: Stack(
@@ -712,7 +743,7 @@ class ServiceCardView extends StatelessWidget {
                     Expanded(
                       child: Text(
                         service.name ?? "No Name",
-                        style: kLabelTextStyle.copyWith(fontSize: 16),
+                        style: kLabelTextStyle.copyWith(fontSize: 18),
                         textAlign: TextAlign.center,
                       ),
 
@@ -762,7 +793,7 @@ mixin QuickBooksHelper {
     qbModels.Customer customerToCreate = qbModels.Customer(
       givenName: firstName,
       familyName: lastName,
-      resaleNum: driverLicenseNumber,
+      companyName: driverLicenseNumber, // TODO Find a better way to link client license
     );
     qbModels.Customer createdCustomer = await client
         .getAccountingClient()
@@ -780,7 +811,7 @@ mixin QuickBooksHelper {
     try {
       var queryBuffer = StringBuffer();
       queryBuffer.write("SELECT * FROM Customer ");
-      queryBuffer.write("WHERE ResaleNum = '$driverLicenseNumber' ");
+      queryBuffer.write("WHERE CompanyName = '$driverLicenseNumber' ");
 
       String query = queryBuffer.toString();
       foundCustomers =
@@ -801,6 +832,7 @@ mixin QuickBooksHelper {
   Future<qbModels.Customer> _updateCustomer(
       {required qbModels.Customer customer,
       required QuickbooksClient client}) async {
+    print ("Sync Token ${customer.syncToken}");
     return await client
         .getAccountingClient()
         .updateCustomer(customer: customer);
@@ -827,6 +859,7 @@ mixin QuickBooksHelper {
     qbModels.Item itemToCreate = qbModels.Item(
         type: "Service",
         name: serviceName,
+        sku: "MAKANI_",
         incomeAccountRef: qbModels.ReferenceType(
           value: "${account.id}",
           name: "${accountName}",
@@ -844,11 +877,13 @@ mixin QuickBooksHelper {
   Future<List<qbModels.Item>> _getServiceItems(
       {required int page,
       required int pageSize,
-      required QuickbooksClient client}) async {
+      required QuickbooksClient client, 
+      double unitPrice = 10.0}) async {
     List<qbModels.Item> foundItems;
     var queryBuffer = StringBuffer();
     queryBuffer.write("SELECT * FROM Item ");
     queryBuffer.write("WHERE TYPE = 'Service' ");
+    queryBuffer.write("AND Sku LIKE 'MAKANI_%' ");
     queryBuffer.write("STARTPOSITION $page ");
     queryBuffer.write("MAXRESULTS $pageSize ");
 
