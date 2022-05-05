@@ -397,6 +397,11 @@ class _MyHomePageState extends State<MyHomePage>
       _progressModel.setData(status: ProgressStatus.none);
       return;
     }
+
+    _progressModel.setData(
+        status: ProgressStatus.loading,
+        message: "Creating invoice...");
+
     // Create invoice with a line item for each selected item in service list
     qbModels.Invoice invoice = await _createInvoiceForItems(customer: customer, items: _selectedServices, client: quickClient!);
     // On return if customer email is different from provided on update customer.
@@ -424,6 +429,9 @@ class _MyHomePageState extends State<MyHomePage>
     }
     finally {
       _progressModel.setData(status: ProgressStatus.none);
+      setState(() {
+        _selectedServices.clear();
+      });
     }
     // DONE
   }
@@ -1141,6 +1149,9 @@ mixin QuickBooksHelper {
         customerRef: qbModels.ReferenceType(value: customer.id!),
         billEmail: customer.primaryEmailAddr,
         allowOnlineCreditCardPayment: true,
+        allowOnlinePayment: true,
+        allowIPNPayment: true,
+        allowOnlineACHPayment: true,
         line: items
             .map((item) => qbModels.SalesItemLine(
                 id: item.id,
