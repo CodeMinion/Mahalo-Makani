@@ -4,6 +4,7 @@ import 'dart:ui';
 import 'package:air_brother/air_brother.dart';
 import 'package:another_quickbooks/another_quickbooks.dart';
 import 'package:another_quickbooks/quickbook_models.dart' as qbModels;
+import 'package:another_quickbooks/services/accounting/item_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -22,7 +23,7 @@ void main() {
 }
 
 const double kLabelWidth = 90.3;
-const double kLabelHeight = 29;
+const double kLabelHeight = 40;
 const double kDefaultRatePerHour = 60.0;
 TextStyle kLabelTextStyle = GoogleFonts.vibur();
 LottieComposition? kDefaultComposition;
@@ -67,6 +68,8 @@ class _MyHomePageState extends State<MyHomePage>
   String? realmId;
 
   qbModels.Customer? _activeCustomer;
+  qbModels.Item? _activeService;
+
 
   bool _appIsReady = false;
 
@@ -89,11 +92,12 @@ class _MyHomePageState extends State<MyHomePage>
       });
 
       //TODO Toggle when we are authenticated.  For now set it here.
+
       /*
       setState(() {
         _appIsReady = true;
-      });
-      */
+      });*/
+
     });
 
     // Load the lottie ahead of time so by the time we need it there is no delay.
@@ -171,15 +175,35 @@ class _MyHomePageState extends State<MyHomePage>
               icon: const Icon(Icons.volunteer_activism),
             ),
           ),
-          Tooltip(
-            message: "Add Item",
-            child: ActionButton(
-              onPressed: () {
-                // TODO Call add item dialog.
-              },
-              icon: const Icon(Icons.add_business),
-            ),
-          )
+
+          if (_selectedServices.isNotEmpty)...[
+            Tooltip(
+              message: "Edit Service",
+              child: ActionButton(
+                onPressed: () {
+                  // Call add item dialog.
+                  if(_selectedServices.isEmpty) {
+                    return;
+                  }
+                  _updateSelectedService(service: _selectedServices.single);
+                },
+                icon: const Icon(Icons.edit),
+              ),
+            )
+          ]
+          else ...[
+            Tooltip(
+              message: "Add Service",
+              child: ActionButton(
+                onPressed: () {
+                  // Call add item dialog.
+                  _addNewService();
+                },
+                icon: const Icon(Icons.add_business),
+              ),
+            )
+          ]
+
         ],
       ), // This trailing comma makes auto-formatting nicer for build methods.
     );
@@ -265,10 +289,12 @@ class _MyHomePageState extends State<MyHomePage>
       service: service,
       isSelected: _selectedServices.contains(service),
       onLongPress: () {
-        // TODO Open update dialog
+        // Open update dialog
+        _updateSelectedService(service: service);
       },
       onDeleteTap: () {
-        // TODO Consider opening a dialog.
+        // Consider opening a dialog.
+        _deleteService(service: service);
       },
       onTap: () {
         setState(() {
@@ -402,6 +428,113 @@ class _MyHomePageState extends State<MyHomePage>
     // DONE
   }
 
+  Future _addNewService() async {
+    _activeService = qbModels.Item(unitPrice: 10.0);
+    qbModels.Item? service = await _showBaseServiceDialog();
+    if (service == null) {
+      return;
+    }
+
+    // Call insert item
+    try {
+      qbModels.Item insertedService = await _createServiceItem(serviceName: service.name!, serviceDescription: service.description!, client: quickClient! , serviceCost: service.unitPrice!);
+      setState(() {
+        _pagingController.itemList?.add(insertedService);
+      });
+    }
+    on ItemException catch(e) {
+      _showSnackBar(message: e.message ?? "Error creating item");
+    }
+  }
+
+  Future _updateSelectedService({required qbModels.Item service}) async {
+    _activeService = _selectedServices.single;
+    qbModels.Item? updatedService = await _showBaseServiceDialog(isUpdate: true);
+    if (updatedService == null) {
+      return;
+    }
+    try {
+      print ("Before Update: $service");
+      print ("Updating: $updatedService");
+      updatedService = await quickClient!.getAccountingClient().updateItem(item: updatedService);
+      int index = _pagingController.itemList!.indexWhere((element) => element.id == updatedService!.id);
+      int selectedIndex = _selectedServices.indexWhere((element) => element.id == updatedService!.id);
+      setState(() {
+        _selectedServices[selectedIndex] = updatedService!;
+        _pagingController.itemList![index] = updatedService;
+      });
+    }
+    on ItemException catch(e) {
+      print(e);
+      _showSnackBar(message: e.message ?? "Error updating service.");
+    }
+  }
+
+  ///
+  /// Deletes the specified service from QuickBooks.
+  ///
+  Future<void> _deleteService({required qbModels.Item service}) async {
+    bool? delete = await _showBaseConfirmationDialogDialog(
+      body: RichText(
+        text: TextSpan(
+          text: 'Delete service  ',
+          style: Theme.of(context).textTheme.bodyText2,
+          children: <TextSpan>[
+            TextSpan(
+                text: "${service.name} ",
+                style: const TextStyle(fontWeight: FontWeight.bold)),
+            const TextSpan(text: "?"),
+          ],
+        ),
+      ),
+      positive: "Delete",
+    );
+
+    if (delete != true) {
+      return;
+    }
+
+    try {
+      qbModels.Item updatedService = await quickClient!.getAccountingClient().updateItem(item: service.copyWith(active: false));
+      int index = _pagingController.itemList!.indexWhere((element) => element.id == updatedService.id);
+      int selectedIndex = _selectedServices.indexWhere((element) => element.id == updatedService.id);
+
+      print ("Deleted index: $index");
+      setState(() {
+        _selectedServices.removeAt(selectedIndex);
+        _pagingController.itemList?.removeAt(index);
+      });
+    }
+    on ItemException catch(e) {
+      _showSnackBar(message: e.message ?? "Error updating service.");
+    }
+  }
+
+  Future<qbModels.Item?> _showBaseServiceDialog({bool isUpdate = false}) {
+    return showGeneralDialog<qbModels.Item?>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: "Barrier",
+      transitionDuration: const Duration(milliseconds: 500),
+      pageBuilder: (context, anim1, anim2) {
+        return Container();
+      },
+      transitionBuilder: (context, anim1, anim2, child) {
+        final curvedValue = Curves.easeInOutBack.transform(anim1.value) - 1.0;
+        return Transform(
+            transform: Matrix4.translationValues(0.0, curvedValue * 200, 0.0),
+            child: Opacity(
+              opacity: anim1.value,
+              child: _buildBaseDialogBody(
+                  child: _createItemForm(
+                      context: context,
+                      setState: setState,
+                      isUpdate: isUpdate)),
+            ));
+      },
+    );
+  }
+
   Widget _createCustomerEmailForm(
       {required BuildContext context, required StateSetter setState}) {
     return Form(
@@ -469,6 +602,91 @@ class _MyHomePageState extends State<MyHomePage>
     return RegExp(
             r"^[a-zA-Z0-9.a-zA-Z0-9.!#$%&'*+-/=?^_`{|}~]+@[a-zA-Z0-9]+\.[a-zA-Z]+")
         .hasMatch(value!);
+  }
+
+  Widget _createItemForm(
+      {required BuildContext context,
+        bool isUpdate = false,
+        required StateSetter setState}) {
+    ThemeData mainTheme = Theme.of(context);
+    return Form(
+        key: _formKey,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            TextFormField(
+              initialValue: _activeService?.name,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(labelText: "Service Name"),
+              // The validator receives the text that the user has entered.
+              validator: (value) {
+                if (!isValidEntry(value)) {
+                  return 'Please enter a valid name';
+                }
+                _activeService = _activeService?.copyWith(name: value);
+                return null;
+              },
+            ),
+            const SizedBox(
+              height: 8,
+            ),
+            TextFormField(
+              initialValue: _activeService?.description,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(labelText: "Description"),
+              // The validator receives the text that the user has entered.
+              validator: (value) {
+                if (!isValidEntry(value)) {
+                  return 'Please enter a valid last name';
+                }
+                _activeService = _activeService?.copyWith(description: value);
+                return null;
+              },
+            ),
+            const SizedBox(
+              height: 8,
+            ),
+            TextFormField(
+              initialValue: "${_activeService?.unitPrice}",
+              textInputAction: TextInputAction.next,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: "Rate"),
+              // The validator receives the text that the user has entered.
+              validator: (value) {
+                double rate =
+                parseRate(rateStr: value?.replaceAll("\$", " "));
+                if (rate < 0) {
+                  return 'Please enter a valid rate';
+                }
+
+                _activeService = _activeService?.copyWith(unitPrice: rate);
+                return null;
+              },
+            ),
+            const SizedBox(
+              height: 8,
+            ),
+            Padding(
+              padding: const EdgeInsets.only(top: 16.0),
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(48), // NEW
+                ),
+                onPressed: () {
+                  // Validate returns true if the form is valid, or false otherwise.
+                  if (_formKey.currentState!.validate()) {
+                    Navigator.pop(context, _activeService);
+                  }
+                },
+                child: isUpdate
+                    ? const Text('Update Service')
+                    : const Text('Add Service'),
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+        ));
   }
 
   Future<String?> _showCustomerInvoiceDialog() {
@@ -654,6 +872,22 @@ class _MyHomePageState extends State<MyHomePage>
       },
     );
   }
+  double parseRate({String? rateStr}) {
+    print("Parsing $rateStr");
+    if (rateStr == null) {
+      return -1.0;
+    }
+
+    try {
+      return double.parse(rateStr);
+    } catch (e) {
+      return -1.0;
+    }
+  }
+
+  bool isValidEntry(String? value) {
+    return value?.isNotEmpty == true;
+  }
 }
 
 class ProgressOverlay extends StatelessWidget {
@@ -769,7 +1003,7 @@ class ServiceCardView extends StatelessWidget {
                       padding: EdgeInsets.all(8.0),
                       child: Icon(
                         Icons.close,
-                        color: Theme.of(context).colorScheme.onSecondary,
+                        color: Colors.black,
                       ),
                     ),
                   ))
@@ -843,6 +1077,7 @@ mixin QuickBooksHelper {
   ///
   Future<qbModels.Item> _createServiceItem(
       {required String serviceName,
+        required String serviceDescription,
       required QuickbooksClient client,
       double serviceCost = 10.0,
       String accountName = "Design income"}) async {
@@ -859,6 +1094,7 @@ mixin QuickBooksHelper {
     qbModels.Item itemToCreate = qbModels.Item(
         type: "Service",
         name: serviceName,
+        description: serviceDescription,
         sku: "MAKANI_",
         incomeAccountRef: qbModels.ReferenceType(
           value: "${account.id}",
@@ -1083,7 +1319,7 @@ class _ExpandableFabState extends State<ExpandableFab>
               padding: const EdgeInsets.all(8.0),
               child: Icon(
                 Icons.close,
-                color: Theme.of(context).colorScheme.onSecondary,
+                color: Colors.black,
               ),
             ),
           ),
