@@ -1,16 +1,21 @@
-# mahalo_makani
+# Mahalo Makani
 
-A new Flutter project.
+A Flutter project for the Brother Hackathon 2022.
 
-## Getting Started
+## Mini-Hackathon #1.
 
-This project is a starting point for a Flutter application.
+Makani (the “wind”) is a friendly handyman in Molokai. He is famous for
+his Nothing-More-Than-$10 service fee! Everyone calls him “tutu kane
+Makani” or Grandpa Makani. He is seeking help with a simple invoicing
+app. This will help him keep track of his finance and perhaps grow his
+small business.
 
-A few resources to get you started if this is your first Flutter project:
+Can you help Makani? He will most definitely give you a big “Mahalo!”
 
-- [Lab: Write your first Flutter app](https://flutter.dev/docs/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://flutter.dev/docs/cookbook)
+# Brother Hackathon
 
-For help getting started with Flutter, view our
-[online documentation](https://flutter.dev/docs), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+Feel free to use any of my GitHub repositories in your apps. You should also consider
+attending the free Brother Hackathon happening this year. You get a free Brother QL-1110NWB,
+a PT-P910BT, and possibly an awesome DS-940DW mobile scanner. Visit brotherhackathon.com for
+more information. I will be teaching workshops, and they are free. You can ask me any questions.
+Thank you.
